@@ -41,6 +41,7 @@ class CausalSelfAttention(nn.Module):
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.dropout = config.dropout
+        self.attention_type = config.attention_type
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
         if not self.flash:
@@ -49,26 +50,42 @@ class CausalSelfAttention(nn.Module):
             self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
                                         .view(1, 1, config.block_size, config.block_size))
 
-    def forward(self, x):
-        B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
+    def forward(self, x, h_states):
+        
+        if self.attention_type == "reflex" and len(h_states) >= 2: 
+            x = torch.vstack([h[0] for h in h_states] + [x]) # B * (num_h_states + 1), T, C 
+
+        B, T, C = x.size() # batch size * num_h_states, sequence length, embedding dimensionality (n_embd)
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k, v  = self.c_attn(x).split(self.n_embd, dim=2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-
+        q, k, v  = self.c_attn(x).split(self.n_embd, dim=2) #or expand for 3 hidden states
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B * num_h_states, nh, T, hs)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B * num_h_states, nh, T, hs)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B * num_h_states, nh, T, hs)
+        
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
-        if self.flash:
+        if self.attention_type == "classic" or len(h_states) < 2: 
             # efficient attention using Flash Attention CUDA kernels
             y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
-        else:
-            # manual implementation of attention
-            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-            att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-            att = F.softmax(att, dim=-1)
-            att = self.attn_dropout(att)
-            y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+
+        elif self.attention_type == "reflex":
+            B = B // 3 # get real batch size
+
+            q_sa, k_sa, v_sa = q[-B:], k[-B:], v[-B:] # self-attention with last hs (like x)
+            q_sa, k_sa, v_sa = q_sa[:, :2, :, :], k_sa[:, :2, :, :], v_sa[:, :2, :, :] #use first two heads
+            y_sa = torch.nn.functional.scaled_dot_product_attention(q_sa, k_sa, v_sa, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+            
+            # cross attention with previous tokens
+            q_ca_1, k_ca_1, v_ca_1 = q[-B:], k[-2* B: -B], v[-2* B: -B] # cross-attention with hs_(i-1)
+            q_ca_1, k_ca_1, v_ca_1 = q_ca_1[:, 2:4, :, :], k_ca_1[:, 2:4, :, :], v_ca_1[:, 2:4, :, :]
+            y_ca_1 = torch.nn.functional.scaled_dot_product_attention(q_ca_1, k_ca_1, v_ca_1, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+            
+            # cross attention with pre previous tokens
+            q_ca_2, k_ca_2, v_ca_2 = q[-B:], k[-3* B: -B * 2], v[-3* B: -B * 2]   # cross-attention with hs_(i-2)
+            q_ca_2, k_ca_2, v_ca_2 = q_ca_2[:, 4:, :, :], k_ca_2[:, 4:, :, :], v_ca_2[:, 4:, :, :]
+            y_ca_2 = torch.nn.functional.scaled_dot_product_attention(q_ca_2, k_ca_2, v_ca_2, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+
+            y = torch.cat((y_sa, y_ca_1, y_ca_2), dim=1)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
 
         # output projection
@@ -100,8 +117,8 @@ class Block(nn.Module):
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
 
-    def forward(self, x):
-        x = x + self.attn(self.ln_1(x))
+    def forward(self, x, hs):
+        x = x + self.attn(self.ln_1(x), hs)
         x = x + self.mlp(self.ln_2(x))
         return x
 
@@ -113,6 +130,7 @@ class GPTConfig:
     n_head: int = 12
     n_embd: int = 768
     dropout: float = 0.0
+    attention_type: str = "classic"
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
 class GPT(nn.Module):
@@ -177,8 +195,14 @@ class GPT(nn.Module):
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
         x = self.transformer.drop(tok_emb + pos_emb)
-        for block in self.transformer.h:
-            x = block(x)
+
+        h_tokens = [(x, -1)]
+        for i, block in enumerate(self.transformer.h):
+            if len(h_tokens) > 3: # save only two last hidden tokens
+                h_tokens.pop(0)
+            x = block(x, h_tokens[:-1])
+            h_tokens.append((x, i))
+
         x = self.transformer.ln_f(x)
 
         if targets is not None:
@@ -328,3 +352,12 @@ class GPT(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)
 
         return idx
+
+
+if __name__ == "__main__":
+    gptconf = GPTConfig()
+    gptconf.n_layer = 6
+    gptconf.n_head = 6
+    gptconf.attention_type = "reflex"
+    model = GPT(gptconf)
+    model.forward(torch.arange(0, 100).reshape(5, 20))
