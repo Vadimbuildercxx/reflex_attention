@@ -83,7 +83,7 @@ exec(open(path).read()) # overrides from command line or config file
 
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
-assert attention_type in ["classic", "reflex"]
+assert attention_type in ["classic", "reflex", "route"]
 
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?

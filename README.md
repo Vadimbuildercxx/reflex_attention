@@ -1,15 +1,39 @@
 
-# nanoGPT
+# Reflex attention
 
-![nanoGPT](assets/nanogpt.jpg)
+Имплементация reflex attention в модели NanoGPT.
 
-The simplest, fastest repository for training/finetuning medium-sized GPTs. It is a rewrite of [minGPT](https://github.com/karpathy/minGPT) that prioritizes teeth over education. Still under active development, but currently the file `train.py` reproduces GPT-2 (124M) on OpenWebText, running on a single 8XA100 40GB node in about 4 days of training. The code itself is plain and readable: `train.py` is a ~300-line boilerplate training loop and `model.py` a ~300-line GPT model definition, which can optionally load the GPT-2 weights from OpenAI. That's it.
+## Install
 
-![repro124m](assets/gpt2_124M_loss.png)
+## Reflex attention
 
-Because the code is so simple, it is very easy to hack to your needs, train new models from scratch, or finetune pretrained checkpoints (e.g. biggest one currently available as a starting point would be the GPT-2 1.3B model from OpenAI).
+По скольку трансформеры склонны при увеличении контекста придавать схлопывать репрезентации.
+Попробуем имплементировать Reflex attention посчитав cross-attention (CA) по предыдущим слоям и (SA) по конкретному слою.
 
-## install
+$ Attn_i = Cat[SA(h_i), \; CA(h_{i-1}, h_i) , \; CA(h_{i-2}, h_i)] $
+
+!картинка
+
+Как можно увидеть темп обучения стал чуть быстрее, хотя не так сильно. 
+
+По скольку количество слоев не такое большое, и коллапс репрезентаций происходит при сильном увеличении слоев попробуем увеличить количество слоев до 36 и уменьшим другие параметры.
+
+## Reflex attention with route
+Попробуем развить идею и добавить роуты
+По скольку трансформеры склонны при увеличении контекста придавать схлопывать репрезентации.
+Попробуем имплементировать Reflex attention посчитав cross-attention (CA) по предыдущим слоям и (SA) по конкретному слою.
+
+$ Attn_i = Cat[SA(h_i), \; CA(h_{i-1}, h_i) , \; CA(h_{i-2}, h_i)] $
+
+
+## Дополнительно
+По скольку в трансформерах имеет место коллапс репрезентаций ([Transformers need glasses](https://arxiv.org/pdf/2406.04267)) , что ведет к ухудшению качества модели при увеличении последовательности попробуем для решения этой задачи применить Reflex attention. Попробуем обучить NanoGPT с reflex-attention и классическим attention на умножении пятизначных чисел. И сравним их качество. Идея эксперемента взята из [SEQ-VCR:PREVENTING COLLAPSE IN INTERMEDIATE
+TRANSFORMER REPRESENTATIONS FOR ENHANCED
+REASONING](https://arxiv.org/pdf/2411.02344).
+
+Пример последовательности
+
+Для 
 
 ```
 pip install torch numpy transformers datasets tiktoken wandb tqdm
