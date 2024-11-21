@@ -37,10 +37,10 @@ class CausalSelfAttention(nn.Module):
         self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
         # router
         router_size = config.n_head * 3
-        k_router_data = torch.ones(router_size) / router_size
-        v_router_data = torch.ones(router_size) / router_size
-        self.k_router = nn.Parameter(k_router_data)
-        self.v_router = nn.Parameter(v_router_data)
+        self.k_router = nn.Parameter(torch.ones(router_size))
+        torch.nn.init.xavier_uniform(self.k_router , a=0.0, b=1.0, generator=None)
+        self.v_router = nn.Parameter(torch.ones(router_size))
+        torch.nn.init.xavier_uniform(self.v_router , a=0.0, b=1.0, generator=None)
         # regularization
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
