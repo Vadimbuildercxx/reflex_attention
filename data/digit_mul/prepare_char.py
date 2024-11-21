@@ -26,8 +26,6 @@ def vectorized_multiplication_representation(num1, num2):
     
     return output
 
-# Initialize the tokenizer
-tokenizer = tiktoken.get_encoding("gpt2")
 
 # Data generation func
 def generate_data(num_samples):
@@ -43,9 +41,8 @@ def generate_data(num_samples):
 def preprocess_data(samples): #, output_file
     tokenized_data = []
     for sample in samples:
-        tokenized = tokenizer.encode(sample)  # Tokenize using GPT-2 encoding
-        tokenized_data.extend(tokenized)
-        tokenized_data.append(tokenizer.encode("\n")[0])  # Add newline token
+        tokenized_data.append(sample)
+        tokenized_data.append("\n")  # Add newline token
     return "".join(tokenized_data)
     #np.array(tokenized_data, dtype=np.uint16).tofile(output_file)
 
