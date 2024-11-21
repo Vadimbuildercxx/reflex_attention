@@ -22,7 +22,9 @@ dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported
 compile = False # use PyTorch 2.0 to compile the model to be faster
 expression = ""
 stop_symbol = "\n"
-exec(open('configurator.py').read()) # overrides from command line or config file
+import pathlib
+path = str(pathlib.Path(__file__).parent.absolute()) + '/configurator.py'
+exec(open(path).read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
 torch.manual_seed(seed)
