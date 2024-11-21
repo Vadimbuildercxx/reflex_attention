@@ -10,7 +10,7 @@
 По скольку трансформеры склонны при увеличении контекста придавать схлопывать репрезентации.
 Попробуем имплементировать Reflex attention посчитав cross-attention (CA) по предыдущим слоям и (SA) по конкретному слою.
 
-$ Attn_i = Cat[SA(h_i), \; CA(h_{i-1}, h_i) , \; CA(h_{i-2}, h_i)] $
+$Attn_i = Cat[SA(h_i), \; CA(h_{i-1}, h_i) , \; CA(h_{i-2}, h_i)]$
 
 ![alt text](images/reflex_attn_compare.png)
 
@@ -25,13 +25,13 @@ $ Attn_i = Cat[SA(h_i), \; CA(h_{i-1}, h_i) , \; CA(h_{i-2}, h_i)] $
 ## Reflex attention with route
 Попробуем развить идею и добавить роуты. Добавим $K_{router}$ и $V_{router}$ И будем получать $K$ и $V$ помощью линейной комбинации с предыдущих выходов модели.
 
-$ K = \sum_{i=0}^{H \cdot L} \alpha_i \cdot K_i, \alpha_i \in K_{router}$,
+$K = \sum_{i=0}^{H \cdot L} \alpha_i \cdot K_i, \alpha_i \in K_{router}$,
 
-$ V = \sum_{i=0}^{H \cdot L} \beta_i \cdot V_i, \beta_i \in V_{router}$,
+$V = \sum_{i=0}^{H \cdot L} \beta_i \cdot V_i, \beta_i \in V_{router}$,
 
 где $H$ - количество голов внимания, $L$ - количество скрытых подаваемых скрытых состояний + вход слоя. И считаем внимание как обычно.
 
-$ Attn = SA[Q, K, V]$.
+$Attn = SA[Q, K, V]$.
 
 
 ![alt text](images/route_attn_compare.png)
