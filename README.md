@@ -1,11 +1,3 @@
-%%HTML
-<!-- execute this cell before continue -->
-<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato">
-<style>
-    .reveal * { font-family: "Lato" !important; } 
-    .reveal .code_cell * { font-family: monospace !important; }    
-</style>
-
 # Reflex attention
 
 Имплементация reflex attention в модели NanoGPT.
