@@ -31,8 +31,8 @@ def vectorized_multiplication_representation(num1, num2):
 def generate_data(num_samples):
     samples = []
     for _ in range(num_samples):
-        num1 = np.random.randint(10000, 100000)  # Random 5-digit numbers
-        num2 = np.random.randint(10000, 100000)
+        num1 = np.random.randint(1000, 10000)  # Random 5-digit numbers
+        num2 = np.random.randint(1000, 10000)
         sample = vectorized_multiplication_representation(num1, num2)
         samples.append(sample)
     return samples
