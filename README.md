@@ -73,7 +73,10 @@ REASONING](https://arxiv.org/pdf/2411.02344) и сравним их качест
 
 $\mathcal{H}_{i,\alpha}(X) = \frac{1}{1-\alpha} \log\left(\sum_{j=1}^n p_j^\alpha \right), \; i \in \{1, \dots, n\}$ , 
 
+<img src="https://render.githubusercontent.com/render/math?math=\mathcal{H}_{i,\alpha}(X)=\frac{1}{1-\alpha}\log\left(\sum_{j=1}^n p_j^\alpha\right),\;i\in\{1,\dots,n\}">
+
 где вероятность считается следующим образом $p_j= \frac{\lambda_j(H_i \cdot H_i^T)}{tr(H_i \cdot H_i^T)}$ и $H_i \in \mathbb{R}^{T \times d}$ - скрытое состояние на $i$-том слое, $\lambda_j$-собственные значение матрицы $H_i \cdot H_i^T$.
+
 
 Посчитаем для разных длин последовательностей энтропию слоев и сравним ее с моделью с обычным Self-Attention.
 
