@@ -8,10 +8,6 @@ def vectorized_multiplication_representation(num1, num2):
     Returns:
     str: Formatted multiplication representation
     """
-    # Validate input (5-digit numbers)
-    if not (10000 <= num1 <= 99999 and 10000 <= num2 <= 99999):
-        raise ValueError("Both numbers must be 5-digit numbers")
-    
     # Convert number to string and extract digits
     num2_digits = np.array([int(d) for d in reversed(str(num2))])
     
