@@ -71,9 +71,9 @@ REASONING](https://arxiv.org/pdf/2411.02344) и сравним их качест
 
 Попробуем посмотреть на энтропию самих скрытых состояний токенов. Для этого прогоним часть сэмплов через модель и получим из каждого скрытые состояния токенов. И далее для каждого посчитаем энтропию Реньи по следующей формуле:
 
-$\mathcal{H}_{i,\alpha}(X) = \frac{1}{1-\alpha} \log\left(\sum_{j=1}^n p_j^\alpha \right), \; i \in \{1, \dots, n\}$ , 
+<!-- $\mathcal{H}_{i,\alpha}(X) = \frac{1}{1-\alpha} \log\left(\sum_{j=1}^n p_j^\alpha \right), \; i \in \{1, \dots, n\}$,  -->
 
-<img src="https://render.githubusercontent.com/render/math?math=\mathcal{H}_{i,\alpha}(X)=\frac{1}{1-\alpha}\log\left(\sum_{j=1}^n p_j^\alpha\right),\;i\in\{1,\dots,n\}">
+<img src="https://latex.codecogs.com/gif.latex?\mathcal{H}_{i,\alpha}(X) = \frac{1}{1-\alpha} \log\left(\sum_{j=1}^n p_j^\alpha \right), \; i \in \{1, \dots, n\}" /> 
 
 где вероятность считается следующим образом $p_j= \frac{\lambda_j(H_i \cdot H_i^T)}{tr(H_i \cdot H_i^T)}$ и $H_i \in \mathbb{R}^{T \times d}$ - скрытое состояние на $i$-том слое, $\lambda_j$-собственные значение матрицы $H_i \cdot H_i^T$.
 
