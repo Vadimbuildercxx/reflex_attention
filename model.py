@@ -294,7 +294,7 @@ class GPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None):
+    def forward(self, idx, targets=None, return_hidden=False, return_attention=False):
         device = idx.device
         b, t = idx.size()
         assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
@@ -305,11 +305,16 @@ class GPT(nn.Module):
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
         x = self.transformer.drop(tok_emb + pos_emb)
 
+        if return_hidden:
+            hs = []
+
         h_tokens = [(x, -1)]
         for i, block in enumerate(self.transformer.h):
             if len(h_tokens) > 3: # save only two last hidden tokens
                 h_tokens.pop(0)
             x = block(x, h_tokens[:-1])
+            if return_hidden:
+                hs.append(x)
             h_tokens.append((x, i))
 
         x = self.transformer.ln_f(x)
@@ -323,6 +328,9 @@ class GPT(nn.Module):
             logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
             loss = None
 
+        if return_hidden:
+            return logits, loss, hs
+        
         return logits, loss
 
     def crop_block_size(self, block_size):

@@ -22,6 +22,7 @@ dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported
 compile = False # use PyTorch 2.0 to compile the model to be faster
 expression = ""
 stop_symbol = "\n"
+data_path = "data"
 import pathlib
 path = str(pathlib.Path(__file__).parent.absolute()) + '/configurator.py'
 exec(open(path).read()) # overrides from command line or config file
@@ -57,7 +58,7 @@ if compile:
 # look for the meta pickle in case it is available in the dataset folder
 load_meta = False
 if init_from == 'resume' and 'config' in checkpoint and 'dataset' in checkpoint['config']: # older checkpoints might not have these...
-    meta_path = os.path.join('data', checkpoint['config']['dataset'], 'meta.pkl')
+    meta_path = os.path.join(data_path, checkpoint['config']['dataset'], 'meta.pkl')
     load_meta = os.path.exists(meta_path)
 if load_meta:
     print(f"Loading meta from {meta_path}...")
