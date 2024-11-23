@@ -31,6 +31,7 @@ class CausalSelfAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
         assert config.n_embd % config.n_head == 0
+        self.config = config
         # key, query, value projections for all heads, but in a batch
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
         # output projection
@@ -135,8 +136,10 @@ class CausalSelfAttention(nn.Module):
     #     y = self.resid_dropout(self.c_proj(y))
     #     return y
 
-    def forward(self, x, h_states):
+    def forward(self, x, h_states, return_attention_score=False):
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
+        assert not (return_attention_score and self.attention_type == "reflex")
+        
         if self.attention_type == "classic" or len(h_states) < 2: 
             B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
 
@@ -147,8 +150,16 @@ class CausalSelfAttention(nn.Module):
             k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
             v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
 
-            # efficient attention using Flash Attention CUDA kernels
-            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+            if not return_attention_score:
+                # efficient attention using Flash Attention CUDA kernels
+                y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+            else:
+                att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+                bias = torch.tril(torch.ones(self.config.block_size, self.config.block_size)).view(1, 1, self.config.block_size, self.config.block_size)
+                att = att.masked_fill(bias[:,:,:T,:T] == 0, float('-inf'))
+                att_score = F.softmax(att, dim=-1)
+                att = self.attn_dropout(att_score)
+                y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
 
         elif self.attention_type == "route":
             x = torch.stack([h[0] for h in h_states] + [x]) # (num_h_states + 1), B, T, C 
@@ -164,9 +175,17 @@ class CausalSelfAttention(nn.Module):
 
             k = (k.transpose(1, 2) * self.k_router.view(HL,self.n_head,1,1,1)).sum(0).transpose(0, 1) # (B, nh, T, hs)
             v = (v.transpose(1, 2) * self.v_router.view(HL,self.n_head,1,1,1)).sum(0).transpose(0, 1) # (B, nh, T, hs)
+            
+            if not return_attention_score:
+                y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+            else:
+                att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+                bias = torch.tril(torch.ones(self.config.block_size, self.config.block_size)).view(1, 1, self.config.block_size, self.config.block_size)
+                att = att.masked_fill(bias[:,:,:T,:T] == 0, float('-inf'))
+                att_score = F.softmax(att, dim=-1)
+                att = self.attn_dropout(att_score)
+                y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
 
-            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
-        
         elif self.attention_type == "reflex":
             x = torch.vstack([h[0] for h in h_states] + [x]) # B * (num_h_states + 1), T, C 
             B, T, C = x.size() # batch size * num_h_states, sequence length, embedding dimensionality (n_embd)
@@ -199,7 +218,10 @@ class CausalSelfAttention(nn.Module):
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))
+        if return_attention_score:
+            return y, att_score
         return y
+
 
 class MLP(nn.Module):
 
@@ -217,6 +239,7 @@ class MLP(nn.Module):
         x = self.dropout(x)
         return x
 
+
 class Block(nn.Module):
 
     def __init__(self, config):
@@ -225,11 +248,18 @@ class Block(nn.Module):
         self.attn = CausalSelfAttention(config)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
+        self.config = config
 
-    def forward(self, x, hs):
-        x = x + self.attn(self.ln_1(x), hs)
-        x = x + self.mlp(self.ln_2(x))
-        return x
+    def forward(self, x, hs, return_attention=False):
+        if return_attention:
+            att, att_score = self.attn(self.ln_1(x), hs, return_attention)
+            x = x + att
+            x = x + self.mlp(self.ln_2(x))
+            return x, att_score
+        else:
+            x = x + self.attn(self.ln_1(x), hs)
+            x = x + self.mlp(self.ln_2(x))
+            return x
 
 @dataclass
 class GPTConfig:
@@ -241,6 +271,7 @@ class GPTConfig:
     dropout: float = 0.0
     attention_type: str = "classic"
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    return_attention_score = False
 
 class GPT(nn.Module):
 
@@ -308,11 +339,20 @@ class GPT(nn.Module):
         if return_hidden:
             hs = []
 
+        if return_attention:
+            attns = []
+
         h_tokens = [(x, -1)]
         for i, block in enumerate(self.transformer.h):
             if len(h_tokens) > 3: # save only two last hidden tokens
                 h_tokens.pop(0)
-            x = block(x, h_tokens[:-1])
+
+            if return_attention:
+                x, attn = block(x, h_tokens[:-1], return_attention)
+                attns.append(attn)
+            else:
+                x = block(x, h_tokens[:-1])
+
             if return_hidden:
                 hs.append(x)
             h_tokens.append((x, i))
@@ -327,9 +367,13 @@ class GPT(nn.Module):
             # inference-time mini-optimization: only forward the lm_head on the very last position
             logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
             loss = None
-
-        if return_hidden:
+        
+        if return_attention and return_hidden:
+            return logits, loss, hs, attns
+        elif return_hidden:
             return logits, loss, hs
+        elif return_attention:
+            return logits, loss, attns
         
         return logits, loss
 
@@ -477,6 +521,6 @@ if __name__ == "__main__":
     gptconf = GPTConfig()
     gptconf.n_layer = 6
     gptconf.n_head = 6
-    gptconf.attention_type = "reflex"
+    gptconf.attention_type = "route"
     model = GPT(gptconf)
-    model.forward(torch.arange(0, 40).reshape(2, 20))
+    x, _, h, a = model.forward(torch.arange(0, 40).reshape(2, 20), return_hidden=True ,return_attention=True)
